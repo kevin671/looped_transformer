@@ -31,6 +31,8 @@ Please install and activate the environment through
 ```shell
 conda env create -f environment.yml
 conda activate loop_tf
+pip3 install numpy --pre torch --force-reinstall --index-url https://download.pytorch.org/whl/nightly/cu117
+pip3 install transformers chardet scikit-learn xgboost
 ```
 
 ## Running Experiments

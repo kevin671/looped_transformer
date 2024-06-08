@@ -1,0 +1,6 @@
+*.out
+__pycache__
+.d00*
+results2/
+result_folder/
+env_variables.sh
