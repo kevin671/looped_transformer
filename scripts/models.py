@@ -168,7 +168,7 @@ class TransformerModelLooped(TransformerModel):
             raise NotImplementedError
         return f_output
 
-    def forward(self, xs, ys, n_loop_start, n_loops):
+    def forward(self, xs, ys, n_loop_start, n_loops, output=None, return_output=False):
         """
         :param xs: [B, n, d]
         :param ys: [B, n]
@@ -179,20 +179,24 @@ class TransformerModelLooped(TransformerModel):
         B, n, d_in = xs.shape
         zs = self._combine(xs, ys)  # [B, n, d_in], [B, n], [B, n] -> [B, 2n, d_in + 1]
         embeds = self._read_in(zs)  # [B, 2n, d_in + 1] -> [B, 2n, d]
-        if self.loop_func in ['z=f(x+z)']:
-            output = torch.zeros_like(embeds)  # also of shape [B, 2n, d]
-        elif self.loop_func in ['z=f(x*z)']:
-            output = torch.ones_like(embeds)  # also of shape [B, 2n, d]
+        if output is None:
+            if self.loop_func in ['z=f(x+z)']:
+                output = torch.zeros_like(embeds)  # also of shape [B, 2n, d]
+            elif self.loop_func in ['z=f(x*z)']:
+                output = torch.ones_like(embeds)  # also of shape [B, 2n, d]
+            else:
+                raise NotImplementedError("Currently we only support loop function z=f(x+z) or z=f(x*z).")
         else:
-            raise NotImplementedError("Currently we only support loop function z=f(x+z) or z=f(x*z).")
+            assert output.shape == embeds.shape
 
         pred_list = []
+        output_list = []
         for idx in range(n_loops):
             if idx < n_loop_start:  # this will save memory when n_loops large.
                 with torch.no_grad():
                     output = self.f(output, embeds)
             else:
-                output = self.f(output, embeds)
+                output = self.f(output, embeds) # [B, 2n, n_embd]
                 prediction = self._read_out(output)  # [B, 2n, d] -> [B, 2n, 1]
                 if self._pred_type == 'regression':
                     y = prediction[:, self.ind::self.freq, 0]
@@ -201,8 +205,12 @@ class TransformerModelLooped(TransformerModel):
                 else:
                     raise NotImplementedError
                 pred_list.append(y)
+                output_list.append(output)
             if not self.print_flag:
                 print(idx)
                 self.print_flag = True
 
-        return pred_list
+        if return_output:
+            return pred_list, output_list
+        else:
+            return pred_list

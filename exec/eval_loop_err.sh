@@ -13,12 +13,4 @@ mkdir -p /work/gg45/g45004/looped_transformer/result_folder/Figures/
 
 export WANDB_CONFIG_DIR="/work/gg45/g45004/looped_transformer/tmp"
 
-python jupyter_notebooks/Figures_Distillated_LR.py
-
-# python jupyter_notebooks/Figures_LR.py
-
-# python jupyter_notebooks/Figures_Sparse_LR.py
-
-# python jupyter_notebooks/Figures_DT.py
-
-# python jupyter_notebooks/Figures_ReLU2NN.py
+python jupyter_notebooks/eval_loop_err.py

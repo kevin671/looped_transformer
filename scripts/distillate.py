@@ -6,6 +6,7 @@ from tqdm import tqdm
 import torch
 import yaml
 
+from curriculum import Curriculum
 from schema import schema
 from models import build_model
 from tasks import get_task_sampler
@@ -29,29 +30,82 @@ def calculate_gradient_norm(model):
     return norm_dict, total_norm
 
 
+"""
+def train_step(args, teacher_n_loops, teacher_model, student_model, xs, ys, optimizer, ctx, scaler):
+    # not progressive but all at once
+    if ctx is not None:
+        raise NotImplementedError
+    
+    teacher_model.eval()
+    with torch.no_grad():
+        teacher_y_pred = teacher_model(xs, ys, 0, teacher_n_loops)
+        target = teacher_y_pred[-1]
+    
+    student_n_loops = 1
+    total_loss = 0
+    student_model.train()
+    for i in range(student_n_loops):
+        student_y_pred = student_model(xs, ys, 0, 1, None)
+        # list of [B, 2n, n_embd], length = 1
+        #assert  len(student_output_list) == 1
+        #student_output = student_output_list[0]
+        #loss = (student_output - target).square().mean()
+        loss = (student_y_pred[-1] - target).square().mean()
+        total_loss += loss
+
+        if args.training.use_ctx:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
+        
+        optimizer.zero_grad(set_to_none=True)
+
+    with torch.no_grad():
+        y_pred = student_model(xs, ys, 0, student_n_loops)[-1]
+    # norm_dict, total_norm = calculate_gradient_norm(student_model)
+    total_norm = 0
+    norm_dict = {}
+    return total_loss.detach(), y_pred.detach(), total_norm, norm_dict
+"""
+
 def train_step(args, teacher_n_loops, teacher_model, student_model, xs, ys, optimizer, ctx, scaler):
     if ctx is not None:
         raise NotImplementedError
-    else:
-        """
-        Progressive distillation to student model with n_loops/2 loops
-        Trainig student model at ith loop with teacher model at i*2th loop
-        """
-        assert teacher_n_loops % 2 == 0
-        teacher_model.eval()
-        with torch.no_grad():
-            teacher_y_pred_list = teacher_model(xs, ys, 0, teacher_n_loops)
-            # list of [B, n], length teacher_n_loops
 
-        student_n_loops = teacher_n_loops // 2
-        student_y_pred_list = student_model(xs, ys, 0, student_n_loops)
-        # list of [B, n], length student_n_loops, which is teacher_n_loops // 2
+    # Progressive distillation
+    # i ~ [0, teacher_n_loops // 2]
+    # for student model
+    # input: teacher_model(xs, ys, 0, teacher_n_loops)[i * 2]
+    # target: teacher_model(xs, ys, 0, teacher_n_loops)[i * 2 + 2]
 
-        loss = 0
-        for i in range(student_n_loops):
-            loss += (student_y_pred_list[i] - teacher_y_pred_list[i * 2]).square().mean()
-        loss /= student_n_loops
-        y_pred = student_y_pred_list[-1]  # [B, n]
+    assert teacher_n_loops % 2 == 0
+    
+    teacher_model.eval()
+    with torch.no_grad():
+        # _, teacher_output_list = teacher_model(xs, ys, 0, teacher_n_loops, return_output=True)
+        # list of [B, 2n, n_embd], length = teacher_n_loops
+        teacher_y_pred = teacher_model(xs, ys, 0, teacher_n_loops)
+    
+    student_n_loops = teacher_n_loops // 2
+    student_y_pred = student_model(xs, ys, 0, student_n_loops)
+
+    total_loss = 0
+    loss = 0
+    student_model.train()
+    for i in range(student_n_loops):
+        #if i == 0:
+        #    _, student_output_list = student_model(xs, ys, 0, 1, None, return_output=True)
+        #else:
+        #    _, student_output_list = student_model(xs, ys, 0, 1, output=teacher_output_list[i * 2 - 1], return_output=True)
+        # list of [B, 2n, n_embd], length = 1
+        # assert  len(student_output_list) == 1
+        # student_output = student_output_list[0]
+        # target = teacher_output_list[i * 2 + 1]
+        # loss = (student_output - target).square().mean()
+        loss += (student_y_pred[i] - teacher_y_pred[1 + i * 2]).square().mean()
 
     if args.training.use_ctx:
         scaler.scale(loss).backward()
@@ -60,10 +114,15 @@ def train_step(args, teacher_n_loops, teacher_model, student_model, xs, ys, opti
     else:
         loss.backward()
         optimizer.step()
-    norm_dict, total_norm = calculate_gradient_norm(model)
+    total_loss = loss / student_n_loops
     optimizer.zero_grad(set_to_none=True)
-    return loss.detach(), y_pred.detach(), total_norm, norm_dict
 
+    with torch.no_grad():
+        y_pred = student_model(xs, ys, 0, student_n_loops)[-1]
+    # norm_dict, total_norm = calculate_gradient_norm(student_model)
+    total_norm = 0
+    norm_dict = {}
+    return total_loss.detach(), y_pred.detach(), total_norm, norm_dict
 
 def main(args, device):
     # TORCH 2.0 ZONE ###############################
@@ -159,8 +218,9 @@ def main(args, device):
                         if args.model.family in ['gpt2']:
                             output = model(xs, ys)  # [B,]
                         elif args.model.family in ['gpt2_loop']:
-                            n_loops = args.training.curriculum.loops.end // 2  # student
-                            y_pred_list = student_model(xs, ys, 0, n_loops)
+                            # student_n_loops = args.training.curriculum.loops.end // 2  # student
+                            student_n_loops = 1
+                            y_pred_list = student_model(xs, ys, 0, student_n_loops)
                             output = y_pred_list[-1]  # [B, n]
                         else:
                             raise NotImplementedError
@@ -170,8 +230,8 @@ def main(args, device):
                 {
                     "overall_loss": loss,
                     "loop_times": args.training.curriculum.loops.end,
-                    "grad_norm/layerwise": grad_norm_dict,
-                    "grad_norm": total_norm,
+                    # "grad_norm/layerwise": grad_norm_dict,
+                    # "grad_norm": total_norm,
                     "pointwise/loss": dict(
                         zip(point_wise_tags, point_wise_loss.detach().cpu().numpy())
                     ),
@@ -185,7 +245,7 @@ def main(args, device):
         pbar.set_description(f"loss {loss}")
         if i % args.training.save_every_steps == 0:
             training_state = {
-                "model_state_dict": model.state_dict(),
+                "model_state_dict": student_model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "train_step": i,
             }
@@ -195,7 +255,7 @@ def main(args, device):
                 and i % args.training.keep_every_steps == 0
                 and i > 0
         ) or (i == args.training.train_steps - 1):
-            torch.save({'model': model.state_dict()},
+            torch.save({'model': student_model.state_dict()},
                        os.path.join(args.out_dir, f"model_{i}.pt"))
 
 
