@@ -16,7 +16,7 @@ from funcy import merge
 
 gpu_schema = {
     "cuda": merge(tboolean, default(True)),
-    "n_gpu": merge(tinteger, required)  # which gpu device to use
+    "n_gpu": merge(tinteger, required),  # which gpu device to use
 }
 
 model_schema = {
@@ -28,8 +28,7 @@ model_schema = {
     "n_head": merge(tinteger, required),
     "pred_type": merge(tstring, default("regression")),
     "pretrained_path": merge(tstring, nullable, default(None)),
-    "loop_func": merge(tstring, default("z=f(x+z)"), allowed(
-        ["z=f(x+z)", "z=f(x*z)"])),
+    "loop_func": merge(tstring, default("z=f(x+z)"), allowed(["z=f(x+z)", "z=f(x*z)"])),
 }
 
 curriculum_base_schema = {
@@ -54,7 +53,7 @@ training_schema = {
     "use_ctx": merge(tboolean, default(False)),
     "batch_size": merge(tinteger, default(64)),
     "learning_rate": merge(tfloat, default(3e-4)),
-    "weight_decay": merge(tfloat, default(0.)),
+    "weight_decay": merge(tfloat, default(0.0)),
     "train_steps": merge(tinteger, default(1000)),
     "save_every_steps": merge(tinteger, default(1000)),  # how often to checkpoint
     "keep_every_steps": merge(tinteger, default(-1)),  # permanent checkpoints
@@ -71,7 +70,12 @@ wandb_schema = {
     "notes": merge(tstring, default("")),
     "name": merge(tstring, nullable, default(None)),
     "log_every_steps": merge(tinteger, default(10)),
-    "timestamp": merge(tstring, nullable)
+    "timestamp": merge(tstring, nullable),
+}
+
+progressive_distillation = {
+    "teacher_n_loops": merge(tinteger, default(1)),
+    "student_n_loops": merge(tinteger, default(1)),
 }
 
 schema = {
@@ -81,4 +85,5 @@ schema = {
     "training": stdict(training_schema),
     "wandb": stdict(wandb_schema),
     "debug_mode": merge(tboolean, default(False)),
+    "progressive_distillation": stdict(progressive_distillation),
 }

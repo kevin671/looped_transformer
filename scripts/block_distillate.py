@@ -31,61 +31,20 @@ def calculate_gradient_norm(model):
     return norm_dict, total_norm
 
 
-"""
-def train_step(args, teacher_n_loops, teacher_model, student_model, xs, ys, optimizer, ctx, scaler):
-    # not progressive but all at once
-    if ctx is not None:
-        raise NotImplementedError
-    
-    teacher_model.eval()
-    with torch.no_grad():
-        teacher_y_pred = teacher_model(xs, ys, 0, teacher_n_loops)
-        target = teacher_y_pred[-1]
-    
-    student_n_loops = 1
-    total_loss = 0
-    student_model.train()
-    for i in range(student_n_loops):
-        student_y_pred = student_model(xs, ys, 0, 1, None)
-        # list of [B, 2n, n_embd], length = 1
-        #assert  len(student_output_list) == 1
-        #student_output = student_output_list[0]
-        #loss = (student_output - target).square().mean()
-        loss = (student_y_pred[-1] - target).square().mean()
-        total_loss += loss
-
-        if args.training.use_ctx:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            loss.backward()
-            optimizer.step()
-        
-        optimizer.zero_grad(set_to_none=True)
-
-    with torch.no_grad():
-        y_pred = student_model(xs, ys, 0, student_n_loops)[-1]
-    # norm_dict, total_norm = calculate_gradient_norm(student_model)
-    total_norm = 0
-    norm_dict = {}
-    return total_loss.detach(), y_pred.detach(), total_norm, norm_dict
-"""
-
-
 def train_step(
-    args, teacher_n_loops, teacher_model, student_model, xs, ys, optimizer, ctx, scaler
+    args,
+    teacher_n_loops,
+    student_n_loops,
+    teacher_model,
+    student_model,
+    xs,
+    ys,
+    optimizer,
+    ctx,
+    scaler,
 ):
     if ctx is not None:
         raise NotImplementedError
-
-    # Progressive distillation
-    # i ~ [0, teacher_n_loops // 2]
-    # for student model
-    # input: teacher_model(xs, ys, 0, teacher_n_loops)[i * 2]
-    # target: teacher_model(xs, ys, 0, teacher_n_loops)[i * 2 + 2]
-
-    assert teacher_n_loops % 2 == 0
 
     teacher_model.eval()
     with torch.no_grad():
@@ -93,23 +52,18 @@ def train_step(
         # list of [B, 2n, n_embd], length = teacher_n_loops
         teacher_y_pred = teacher_model(xs, ys, 0, teacher_n_loops)
 
-    student_n_loops = teacher_n_loops // 2
     student_y_pred = student_model(xs, ys, 0, student_n_loops)
+    n_loop_ratio = teacher_n_loops // student_n_loops
 
     total_loss = 0
     loss = 0
     student_model.train()
     for i in range(student_n_loops):
-        # if i == 0:
-        #    _, student_output_list = student_model(xs, ys, 0, 1, None, return_output=True)
-        # else:
-        #    _, student_output_list = student_model(xs, ys, 0, 1, output=teacher_output_list[i * 2 - 1], return_output=True)
-        # list of [B, 2n, n_embd], length = 1
-        # assert  len(student_output_list) == 1
-        # student_output = student_output_list[0]
-        # target = teacher_output_list[i * 2 + 1]
-        # loss = (student_output - target).square().mean()
-        loss += (student_y_pred[i] - teacher_y_pred[1 + i * 2]).square().mean()
+        loss += (
+            (student_y_pred[i] - teacher_y_pred[(i + 1) * n_loop_ratio - 1])
+            .square()
+            .mean()
+        )
 
     if args.training.use_ctx:
         scaler.scale(loss).backward()
@@ -157,13 +111,18 @@ def main(args, device):
 
     torch.manual_seed(args.training.seed)
 
-    model = build_model(args.model)
-    teacher_model = model
+    teacher_model = build_model(args.model)
     teacher_model.to(device)
+    teacher_model.eval()
 
     student_model = build_model(args.model)
     student_model.to(device)
     student_model.train()
+
+    teacher_n_loops = args.progressive_distillation.teacher_n_loops
+    student_n_loops = args.progressive_distillation.student_n_loops
+
+    assert teacher_n_loops % student_n_loops == 0
 
     optimizer = torch.optim.Adam(
         student_model.parameters(),
@@ -222,7 +181,8 @@ def main(args, device):
 
         loss, output, total_norm, grad_norm_dict = train_step(
             args,
-            args.training.curriculum.loops.end,
+            teacher_n_loops,
+            student_n_loops,
             teacher_model,
             student_model,
             xs,

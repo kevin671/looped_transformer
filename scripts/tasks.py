@@ -53,7 +53,15 @@ def get_task_sampler(
     }
     if task_name in task_names_to_classes:
         task_cls = task_names_to_classes[task_name]
-        return lambda **args: task_cls(batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=sparsity, **args)
+        return lambda **args: task_cls(
+            batch_size,
+            n_points,
+            n_dims,
+            n_dims_truncated,
+            device,
+            sparsity=sparsity,
+            **args
+        )
     else:
         print("Unknown task")
         raise NotImplementedError
@@ -61,9 +69,13 @@ def get_task_sampler(
 
 class LinearRegression(Task):
 
-    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=None):
+    def __init__(
+        self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=None
+    ):
         """scale: a constant by which to scale the randomly sampled weights."""
-        super(LinearRegression, self).__init__(n_dims, n_dims_truncated, n_points, batch_size)
+        super(LinearRegression, self).__init__(
+            n_dims, n_dims_truncated, n_points, batch_size
+        )
         self.device = device
         self.xs = torch.randn(batch_size, n_points, n_dims, device=device)  # [B, n, d]
         self.xs[..., n_dims_truncated:] = 0
@@ -82,9 +94,20 @@ class LinearRegression(Task):
 
 
 class NoisyLinearRegression(LinearRegression):
-    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=None, std=0.1):
+    def __init__(
+        self,
+        batch_size,
+        n_points,
+        n_dims,
+        n_dims_truncated,
+        device,
+        sparsity=None,
+        std=0.1,
+    ):
         """scale: a constant by which to scale the randomly sampled weights."""
-        super(NoisyLinearRegression, self).__init__(batch_size, n_points, n_dims, n_dims_truncated, device)
+        super(NoisyLinearRegression, self).__init__(
+            batch_size, n_points, n_dims, n_dims_truncated, device
+        )
         self.ys += torch.randn_like(self.ys) * std
 
     @staticmethod
@@ -97,9 +120,13 @@ class NoisyLinearRegression(LinearRegression):
 
 
 class SparseLinearRegression(LinearRegression):
-    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=3):
+    def __init__(
+        self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=3
+    ):
         """scale: a constant by which to scale the randomly sampled weights."""
-        super(SparseLinearRegression, self).__init__(batch_size, n_points, n_dims, n_dims_truncated, device)
+        super(SparseLinearRegression, self).__init__(
+            batch_size, n_points, n_dims, n_dims_truncated, device
+        )
         self.sparsity = sparsity
         valid_coords = n_dims
         assert valid_coords <= n_dims
@@ -122,8 +149,19 @@ class SparseLinearRegression(LinearRegression):
 
 
 class Relu2nnRegression(Task):
-    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=100, hidden_layer_size=100):
-        super(Relu2nnRegression, self).__init__(n_dims, n_dims_truncated, n_points, batch_size)
+    def __init__(
+        self,
+        batch_size,
+        n_points,
+        n_dims,
+        n_dims_truncated,
+        device,
+        sparsity=100,
+        hidden_layer_size=100,
+    ):
+        super(Relu2nnRegression, self).__init__(
+            n_dims, n_dims_truncated, n_points, batch_size
+        )
         self.hidden_layer_size = hidden_layer_size
 
         W1 = torch.randn(self.b_size, self.n_dims, hidden_layer_size, device=device)
@@ -131,6 +169,7 @@ class Relu2nnRegression(Task):
 
         if sparsity < hidden_layer_size:
             import random
+
             non_sparse_mask = torch.zeros(hidden_layer_size, device=device)
             non_sparse_indices = random.sample(range(hidden_layer_size), sparsity)
             non_sparse_mask[non_sparse_indices] = 1
@@ -165,9 +204,20 @@ class Relu2nnRegression(Task):
 
 
 class DecisionTree(Task):
-    def __init__(self, batch_size, n_points, n_dims, n_dims_truncated, device, sparsity=None, depth=4):
+    def __init__(
+        self,
+        batch_size,
+        n_points,
+        n_dims,
+        n_dims_truncated,
+        device,
+        sparsity=None,
+        depth=4,
+    ):
 
-        super(DecisionTree, self).__init__(n_dims, n_dims_truncated, n_points, batch_size)
+        super(DecisionTree, self).__init__(
+            n_dims, n_dims_truncated, n_points, batch_size
+        )
         self.depth = depth
 
         # We represent the tree using an array (tensor). Root node is at index 0, its 2 children at index 1 and 2...

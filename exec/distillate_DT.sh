@@ -18,8 +18,8 @@ source /work/gg45/g45004/looped_transformer/exec/env_variables.sh
 n_gpu=0
 
 # Decision Tree ########################################################################################################
-#b=64
-#T=15
+b=64
+T=15
 #python scripts/train.py --config configs/decision_tree/base_loop.yaml \
 #    --model.n_layer 1 \
 #    --training.curriculum.loops.start $T \
@@ -32,7 +32,7 @@ n_gpu=0
 # Distillate to 32 steps
 b_teacher=64
 b_student=32
-python scripts/distillate.py --config configs/base_loop.yaml \
+python scripts/distillate.py --config configs/decision_tree/base_loop.yaml \
     --model.n_layer 1 \
     --training.curriculum.loops.start $T \
     --training.curriculum.loops.end $b_teacher \
@@ -41,7 +41,7 @@ python scripts/distillate.py --config configs/base_loop.yaml \
     --wandb.name "Distillate_DT_loop_L1_ends{$b_student}" \
     --gpu.n_gpu $n_gpu
 
-<< COMMENTOUT
+v
 # Distillate to 16 steps
 b_teacher=32
 b_student=16
