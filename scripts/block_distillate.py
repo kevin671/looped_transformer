@@ -58,7 +58,8 @@ def train_step(
     total_loss = 0
     loss = 0
     student_model.train()
-    for i in range(student_n_loops):
+    dist_loops = 1
+    for i in range(dist_loops):
         loss += (
             (student_y_pred[i] - teacher_y_pred[(i + 1) * n_loop_ratio - 1])
             .square()
@@ -72,7 +73,7 @@ def train_step(
     else:
         loss.backward()
         optimizer.step()
-    total_loss = loss / student_n_loops
+    total_loss = loss / dist_loops
     optimizer.zero_grad(set_to_none=True)
 
     with torch.no_grad():

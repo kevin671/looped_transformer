@@ -29,16 +29,15 @@ T=15
 #    --gpu.n_gpu $n_gpu\
 
 # Distillate to 1 steps at once
-#b_teacher=32
-#b_student=1
-#python scripts/distillate.py --config configs/base_loop.yaml \
-#    --model.n_layer 1 \
-#    --training.curriculum.loops.start $T \
-#    --training.curriculum.loops.end $b_teacher \
-#    --training.n_loop_window $T \
-#    --model.pretrained_path "/work/gg45/g45004/looped_transformer/results2/linear_regression_loop/0609110718-LR_loop_L1_ends{32}_T{15}-1338/state.pt" \
-#    --wandb.name "Distillate_LR_loop_L1_ends{$b_student}" \
-#    --gpu.n_gpu $n_gpu
+b_teacher=32
+b_student=16
+python scripts/block_distillate.py --config configs/base_loop.yaml \
+    --model.n_layer 1 \
+    --training.curriculum.loops.start $T \
+    --training.curriculum.loops.end $b_teacher \
+    --training.n_loop_window $T \
+    --model.pretrained_path "/work/gg45/g45004/looped_transformer/results2/linear_regression_loop/0609110718-LR_loop_L1_ends{32}_T{15}-1338/state.pt" \
+    --wandb.name "Distillate_LR_loop_teacher_L1_{$b_teacher}_student_L1_{$b_student}" \
 
 << COMMENTOUT
 # Distillate to 16 steps
@@ -78,10 +77,7 @@ python scripts/distillate.py --config configs/base_loop.yaml \
     --model.pretrained_path "/work/gg45/g45004/looped_transformer/results2/linear_regression_loop/0610173845-Distillate_LR_loop_L1_ends{8}-4b8e/state.pt" \
     --wandb.name "Distillate_LR_loop_L1_ends{$b_student}" \
     --gpu.n_gpu $n_gpu
-COMMENTOUT
 
-
-<< COMMENTOUT
 # Distillate to 2 steps
 b_teacher=4
 b_student=2
@@ -93,7 +89,7 @@ python scripts/distillate.py --config configs/base_loop.yaml \
     --model.pretrained_path "/work/gg45/g45004/looped_transformer/results2/linear_regression_loop/0610183139-Distillate_LR_loop_L1_ends{4}-ac31/state.pt" \
     --wandb.name "Distillate_LR_loop_L1_ends{$b_student}" \
     --gpu.n_gpu $n_gpu
-COMMENTOUT
+
 
 # Distillate to 1 steps
 b_teacher=2
@@ -106,3 +102,4 @@ python scripts/distillate.py --config configs/base_loop.yaml \
     --model.pretrained_path "/work/gg45/g45004/looped_transformer/results2/linear_regression_loop/0610212309-Distillate_LR_loop_L1_ends{2}-cf84/state.pt" \
     --wandb.name "Distillate_LR_loop_L1_ends{$b_student}" \
     --gpu.n_gpu $n_gpu
+COMMENTOUT
