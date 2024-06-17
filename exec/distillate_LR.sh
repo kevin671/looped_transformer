@@ -31,13 +31,14 @@ T=15
 # Distillate to 1 steps at once
 b_teacher=32
 b_student=16
-python scripts/block_distillate.py --config configs/base_loop.yaml \
+python scripts/distillate.pyy --config configs/base_loop.yaml \
     --model.n_layer 1 \
     --training.curriculum.loops.start $T \
     --training.curriculum.loops.end $b_teacher \
     --training.n_loop_window $T \
     --model.pretrained_path "/work/gg45/g45004/looped_transformer/results2/linear_regression_loop/0609110718-LR_loop_L1_ends{32}_T{15}-1338/state.pt" \
-    --wandb.name "Distillate_LR_loop_teacher_L1_{$b_teacher}_student_L1_{$b_student}" \
+    --wandb.name "Distillate_LR_loop_L1_ends{$b_student}" \
+    --gpu.n_gpu $n_gpu
 
 << COMMENTOUT
 # Distillate to 16 steps
