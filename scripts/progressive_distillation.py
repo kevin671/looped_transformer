@@ -50,21 +50,32 @@ def train_step(
     with torch.no_grad():
         # _, teacher_output_list = teacher_model(xs, ys, 0, teacher_n_loops, return_output=True)
         # list of [B, 2n, n_embd], length = teacher_n_loops
-        teacher_y_pred = teacher_model(xs, ys, 0, teacher_n_loops)
+        # teacher_y_pred, teacher_outpu = teacher_model(xs, ys, 0, teacher_n_loops)
+        teacher_y_pred, teacher_output_list = teacher_model(xs, ys, 0, teacher_n_loops, return_output=True)
+    #print(f"{len(teacher_y_pred)}, {len(teacher_output_list)=}", flush=True) # 32
+    #print(f"{teacher_y_pred[-1].shape=}, {teacher_output_list[-1].shape=}", flush=True)
+    # teacher_y_pred[-1].shape=torch.Size([64, 41]), teacher_output_list[-1].shape=torch.Size([64, 82, 256])
 
-    student_y_pred = student_model(xs, ys, 0, student_n_loops)
+    # student_y_pred = student_model(xs, ys, 0, student_n_loops)
     n_loop_ratio = teacher_n_loops // student_n_loops
 
-    total_loss = 0
-    loss = 0
-    student_model.train()
-    dist_loops = 1
-    for i in range(dist_loops):
-        loss += (
-            (student_y_pred[i] - teacher_y_pred[(i + 1) * n_loop_ratio - 1])
-            .square()
-            .mean()
-        )
+    # i ~ samplling from [0, student_n_loops - 1]
+    # one loop of student model corresponds to n_loop_ratio loops of teacher model
+    stuedet_step = torch.randint(0, student_n_loops, (1,)).item() 
+    teacher_step = stuedet_step * n_loop_ratio
+    if stuedet_step == 0:
+        input = None
+    else:
+        input = teacher_output_list[teacher_step - 1]
+
+    target = teacher_y_pred[teacher_step + n_loop_ratio - 1]
+    student_y_pred = student_model(xs, ys, 0, 1, output=input)
+    assert len(student_y_pred) == 1
+    student_y_pred = student_y_pred[0]
+
+    # loss
+    loss = (student_y_pred - target).square().mean()
+    # print(f"{student_y_pred.shape=}, {target.shape=}, {loss=}", flush=True)
 
     if args.training.use_ctx:
         scaler.scale(loss).backward()
@@ -73,7 +84,7 @@ def train_step(
     else:
         loss.backward()
         optimizer.step()
-    total_loss = loss / dist_loops
+    total_loss = loss
     optimizer.zero_grad(set_to_none=True)
 
     with torch.no_grad():
@@ -81,7 +92,7 @@ def train_step(
     # norm_dict, total_norm = calculate_gradient_norm(student_model)
     total_norm = 0
     norm_dict = {}
-    return total_loss.detach(), y_pred.detach(), total_norm, norm_dict
+    return stuedet_step, total_loss.detach(), y_pred.detach(), total_norm, norm_dict
 
 
 def main(args, device):
@@ -138,6 +149,14 @@ def main(args, device):
         args, teacher_model, optimizer, curriculum, device
     )
 
+    args, student_model, optimizer, _, state_path, _ = load_pretrained_model(
+        args, student_model, optimizer, curriculum, device
+    )
+
+    # いらないかも
+    for param in student_model._read_out.parameters():
+        param.requires_grad = False
+
     if args.training.use_fixed_dataset:
         from main_utils import gen_dataloader
 
@@ -180,7 +199,7 @@ def main(args, device):
             real_task = task_sampler()
             xs, ys = real_task.xs.float(), real_task.ys.float()
 
-        loss, output, total_norm, grad_norm_dict = train_step(
+        stuedet_step, loss, output, total_norm, grad_norm_dict = train_step(
             args,
             teacher_n_loops,
             student_n_loops,
@@ -205,7 +224,8 @@ def main(args, device):
                     for batch in test_loader:
                         xs, ys = batch["x"].to(device), batch["y"].to(device)
                         if args.model.family in ["gpt2"]:
-                            output = model(xs, ys)  # [B,]
+                            pass
+                            # output = model(xs, ys)  # [B,]
                         elif args.model.family in ["gpt2_loop"]:
                             # student_n_loops = args.training.curriculum.loops.end // 2  # student
                             student_n_loops = 1
@@ -224,6 +244,7 @@ def main(args, device):
                     "pointwise/loss": dict(
                         zip(point_wise_tags, point_wise_loss.detach().cpu().numpy())
                     ),
+                    f"loss_step{stuedet_step}": loss,
                     "n_points": args.training.curriculum.points.end,
                     "n_dims": args.training.curriculum.dims.end,
                     "lr": optimizer.param_groups[0]["lr"],

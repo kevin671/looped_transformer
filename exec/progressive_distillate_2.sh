@@ -29,8 +29,8 @@ T=15
 #    --gpu.n_gpu $n_gpu\
 
 b_teacher=32
-b_student=16
-python scripts/block_distillate.py --config configs/base_loop.yaml \
+b_student=2
+python scripts/progressive_distillation.py --config configs/base_loop.yaml \
     --model.n_layer 1 \
     --progressive_distillation.teacher_n_loops $b_teacher\
     --progressive_distillation.student_n_loops $b_student \
