@@ -9,6 +9,7 @@ class my_Dataset(Dataset):
     """This function reads the data from a pickle file and creates a PyTorch dataset, which contains:
     state, action, reward, reward-to-go, target
     """
+
     def __init__(self, xs, ys):
         self.xs = xs  # [N, n, d]
         self.ys = ys  # [N, n]
@@ -17,10 +18,7 @@ class my_Dataset(Dataset):
         return len(self.xs)
 
     def __getitem__(self, index):
-        return {
-            'x': self.xs[index].float(),  # [n, d]
-            'y': self.ys[index].float()
-        }
+        return {"x": self.xs[index].float(), "y": self.ys[index].float()}  # [n, d]
 
 
 def gen_dataloader(task_sampler, num_sample, batch_size):
@@ -49,10 +47,10 @@ def init_device(args):
 
 
 def rm_orig_mod(state_dict):
-    unwanted_prefix = '_orig_mod.'
+    unwanted_prefix = "_orig_mod."
     for k, v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
-            state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+            state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
     return state_dict
 
 
@@ -60,10 +58,12 @@ def load_pretrained_model(args, model, optimizer, curriculum, device):
     state_path = os.path.join(args.out_dir, "state.pt")
     starting_step = 0
     if os.path.exists(state_path):
-        state = torch.load(state_path, map_location=device)  # NOTE: change to cpu if OOM
+        state = torch.load(
+            state_path, map_location=device
+        )  # NOTE: change to cpu if OOM
         state_dict = state["model_state_dict"]  # rm_orig_mod(state["model_state_dict"])
         model.load_state_dict(state_dict)
-        optimizer.load_state_dict(state["optimizer_state_dict"])
+        # optimizer.load_state_dict(state["optimizer_state_dict"])
         starting_step = state["train_step"]
         for i in range(state["train_step"] + 1):
             curriculum.update()
@@ -72,9 +72,11 @@ def load_pretrained_model(args, model, optimizer, curriculum, device):
     elif args.model.pretrained_path is not None:
         state = torch.load(args.model.pretrained_path, map_location=device)
         if "model_state_dict" in state.keys():
-            state_dict = state["model_state_dict"]  # rm_orig_mod(state["model_state_dict"])
+            state_dict = state[
+                "model_state_dict"
+            ]  # rm_orig_mod(state["model_state_dict"])
             model.load_state_dict(state_dict, strict=False)
-            optimizer.load_state_dict(state["optimizer_state_dict"])
+            # optimizer.load_state_dict(state["optimizer_state_dict"])
             for i in range(state["train_step"] + 1):
                 curriculum.update()
             starting_step = state["train_step"]
@@ -85,7 +87,7 @@ def load_pretrained_model(args, model, optimizer, curriculum, device):
             model.load_state_dict(state_dict)
 
             def find_train_step(s):
-                step = s[s.find('model_') + 6:s.find('.pt')]
+                step = s[s.find("model_") + 6 : s.find(".pt")]
                 return int(step)
 
             num_train_step = find_train_step(args.model.pretrained_path)
@@ -100,7 +102,6 @@ def load_pretrained_model(args, model, optimizer, curriculum, device):
 
 
 def get_run_id(args):
-    now = datetime.datetime.now().strftime('%m%d%H%M%S')
+    now = datetime.datetime.now().strftime("%m%d%H%M%S")
     run_id = "{}-{}-".format(now, args.wandb.name) + str(uuid.uuid4())[:4]
     return run_id
-

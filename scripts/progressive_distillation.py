@@ -51,9 +51,11 @@ def train_step(
         # _, teacher_output_list = teacher_model(xs, ys, 0, teacher_n_loops, return_output=True)
         # list of [B, 2n, n_embd], length = teacher_n_loops
         # teacher_y_pred, teacher_outpu = teacher_model(xs, ys, 0, teacher_n_loops)
-        teacher_y_pred, teacher_output_list = teacher_model(xs, ys, 0, teacher_n_loops, return_output=True)
-    #print(f"{len(teacher_y_pred)}, {len(teacher_output_list)=}", flush=True) # 32
-    #print(f"{teacher_y_pred[-1].shape=}, {teacher_output_list[-1].shape=}", flush=True)
+        teacher_y_pred, teacher_output_list = teacher_model(
+            xs, ys, 0, teacher_n_loops, return_output=True
+        )
+    # print(f"{len(teacher_y_pred)}, {len(teacher_output_list)=}", flush=True) # 32
+    # print(f"{teacher_y_pred[-1].shape=}, {teacher_output_list[-1].shape=}", flush=True)
     # teacher_y_pred[-1].shape=torch.Size([64, 41]), teacher_output_list[-1].shape=torch.Size([64, 82, 256])
 
     # student_y_pred = student_model(xs, ys, 0, student_n_loops)
@@ -61,21 +63,29 @@ def train_step(
 
     # i ~ samplling from [0, student_n_loops - 1]
     # one loop of student model corresponds to n_loop_ratio loops of teacher model
-    stuedet_step = torch.randint(0, student_n_loops, (1,)).item() 
+    stuedet_step = torch.randint(0, student_n_loops, (1,)).item()
+
+    # デバッグよう
+    # stuedet_step = 2
+    #a, b = student_model(xs, ys, 0, 2, return_output=True)
+    #print(b[stuedet_step * n_loop_ratio - 1][0, 0, :10], flush=True)
+
     teacher_step = stuedet_step * n_loop_ratio
     if stuedet_step == 0:
         input = None
     else:
         input = teacher_output_list[teacher_step - 1]
+        # print(input[0, 0, :10], flush=True)
 
     target = teacher_y_pred[teacher_step + n_loop_ratio - 1]
     student_y_pred = student_model(xs, ys, 0, 1, output=input)
+
     assert len(student_y_pred) == 1
     student_y_pred = student_y_pred[0]
 
     # loss
     loss = (student_y_pred - target).square().mean()
-    # print(f"{student_y_pred.shape=}, {target.shape=}, {loss=}", flush=True)
+    print(f"{stuedet_step=}, {loss=}", flush=True)
 
     if args.training.use_ctx:
         scaler.scale(loss).backward()
@@ -83,9 +93,31 @@ def train_step(
         scaler.update()
     else:
         loss.backward()
+
+        for param in student_model.parameters():
+            param_before_update = param.data.clone()
+
         optimizer.step()
+
+        """
+        # パラメータの更新後の値を取得
+        for name, param in student_model.named_parameters():
+            param_after_update = param.data
+
+            # 更新前後の差分を計算
+            update_size = torch.norm(param_after_update - param_before_update)
+            if param.grad is not None:
+                print(f"{name}, Gradient norm: {param.grad.norm().item()}", flush=True)
+            else:
+                print(f"{name}, Gradient is None", flush=True)
+
+            # 更新されたパラメータの大きさを出力
+            print(f"Parameter update size: {update_size.item()}", flush=True)
+        """
+
     total_loss = loss
-    optimizer.zero_grad(set_to_none=True)
+    # optimizer.zero_grad(set_to_none=True)
+    optimizer.zero_grad()
 
     with torch.no_grad():
         y_pred = student_model(xs, ys, 0, student_n_loops)[-1]
@@ -130,26 +162,34 @@ def main(args, device):
     student_model = build_model(args.model)
     student_model.to(device)
     student_model.train()
+    # student_model.eval()
 
     teacher_n_loops = args.progressive_distillation.teacher_n_loops
     student_n_loops = args.progressive_distillation.student_n_loops
 
     assert teacher_n_loops % student_n_loops == 0
 
+    """
+    optimizer = torch.optim.SGD(
+        student_model.parameters(),
+        lr=args.training.learning_rate,
+    )
+    """
     optimizer = torch.optim.Adam(
         student_model.parameters(),
         lr=args.training.learning_rate,
         weight_decay=args.training.weight_decay,
     )
+
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
     curriculum = Curriculum(args.training.curriculum)
 
     # Here the model load the pretrained teacher model
-    args, teacher_model, optimizer, _, state_path, _ = load_pretrained_model(
+    args, teacher_model, _, _, state_path, _ = load_pretrained_model(
         args, teacher_model, optimizer, curriculum, device
     )
 
-    args, student_model, optimizer, _, state_path, _ = load_pretrained_model(
+    args, student_model, _, _, state_path, _ = load_pretrained_model(
         args, student_model, optimizer, curriculum, device
     )
 
